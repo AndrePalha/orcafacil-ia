@@ -5,8 +5,12 @@ import tempfile
 import os
 
 # --- CONFIGURAÇÃO ---
-MINHA_CHAVE = "AIzaSyCPtc_Ajj51xH578kOnY34trlLGiHpwVw8"
-genai.configure(api_key=MINHA_CHAVE)
+# Pegando a chave do cofre secreto do Streamlit
+import os
+if "GOOGLE_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+else:
+    st.error("Chave de API não encontrada!")
 model = genai.GenerativeModel('models/gemini-flash-latest')
 
 st.set_page_config(page_title="OrçaFácil IA", page_icon="🛠️", layout="centered")
