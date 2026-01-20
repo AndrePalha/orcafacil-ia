@@ -5,123 +5,86 @@ import tempfile
 import os
 
 # --- CONFIGURAÇÃO ---
-# Pegando a chave do cofre secreto do Streamlit
-import os
+st.set_page_config(page_title="OrçaFácil IA", page_icon="🎙️", layout="centered")
+
+# --- SEGURANÇA (COFRE) ---
 if "GOOGLE_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 else:
-    st.error("Chave de API não encontrada!")
+    st.error("Configure a chave no Secrets do Streamlit!")
+
+# --- MODELO CORRIGIDO (O SEGREDO ESTÁ AQUI) ---
 model = genai.GenerativeModel('models/gemini-flash-latest')
 
-st.set_page_config(page_title="OrçaFácil IA", page_icon="🛠️", layout="centered")
-
-# --- FUNÇÃO PARA GERAR PDF ---
+# --- FUNÇÃO PDF ---
 def gerar_pdf(texto_orcamento, nome_cliente):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    
-    # Cabeçalho Simulado
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="ORÇAMENTO DE PRESTAÇÃO DE SERVIÇOS", ln=1, align='C')
+    pdf.cell(200, 10, txt="ORÇAMENTO PROFISSIONAL", ln=1, align='C')
     pdf.ln(10)
-    
-    # Corpo do texto
     pdf.set_font("Arial", size=12)
-    # O multi_cell quebra o texto automaticamente
-    # Precisamos tratar caracteres especiais, o FPDF é chato com acentos diretos,
-    # então vamos usar uma codificação simples latin-1 para o MVP
+    # Correção de caracteres
     texto_limpo = texto_orcamento.encode('latin-1', 'replace').decode('latin-1')
     pdf.multi_cell(0, 10, txt=texto_limpo)
     
-    # Salvar temporariamente
     nome_arquivo = f"Orcamento_{nome_cliente}.pdf"
     caminho = os.path.join(tempfile.gettempdir(), nome_arquivo)
     pdf.output(caminho)
     return caminho
 
-# --- INTERFACE ---
-st.title("🛠️ OrçaFácil IA")
-st.subheader("Fale o que precisa ser feito, e eu crio o documento.")
+# --- TELA ---
+st.title("🎙️ OrçaFácil: Fale e Pronto")
+st.info("Dica: Fale o serviço e o valor, eu faço o resto.")
 
-# 1. Dados do Profissional (Simulação)
-with st.expander("👤 Seus Dados (Configuração)", expanded=False):
-    meu_nome = st.text_input("Seu Nome/Empresa", "Renato Soluções Técnicas")
-    meu_contato = st.text_input("Seu Telefone", "(45) 99999-9999")
+with st.expander("👤 Seus Dados", expanded=False):
+    meu_nome = st.text_input("Seu Nome", "Renato Profissional")
+    meu_contato = st.text_input("Seu Zap", "(11) 99999-9999")
 
-# 2. Dados do Cliente
-col1, col2 = st.columns(2)
-nome_cliente = col1.text_input("Nome do Cliente", "Cliente Exemplo")
-data_prazo = col2.date_input("Prazo de Validade")
+nome_cliente = st.text_input("Nome do Cliente", "Sr. João")
 
-# 3. Entrada de Áudio ou Texto
-tab1, tab2 = st.tabs(["🎙️ Gravar Áudio", "✍️ Digitar"])
+# --- ÁREA DE ÁUDIO ---
+st.write("---")
+st.markdown("### 🗣️ O que precisa fazer?")
+audio_gravado = st.audio_input("Clique para gravar")
+texto_manual = st.text_area("Ou escreva aqui:")
 
-with tab1:
-    audio_bytes = st.audio_input("Grave os detalhes do serviço:")
-
-with tab2:
-    texto_manual = st.text_area("Ou digite os detalhes aqui:")
-
-# --- O CÉREBRO DA OPERAÇÃO ---
-if st.button("🚀 Gerar Orçamento Profissional", type="primary"):
-    
-    conteudo_para_ia = ""
-    
-    if audio_bytes:
-        # Gemini processa áudio diretamente? 
-        # Para simplificar neste código MVP sem subir arquivo complexo, 
-        # vamos pedir para você descrever o áudio ou usar o texto.
-        # *Nota Técnica: Para áudio real no Gemini via API, precisa de upload de arquivo.
-        # Vamos usar o modo TEXTO primeiro para validar a ideia, 
-        # ou simular que o áudio foi transcrito.*
-        st.warning("⚠️ Nesta versão V1, por favor use a aba 'Digitar' enquanto configuramos o processamento de áudio na nuvem.")
-        conteudo_para_ia = None # Travando áudio por enquanto para não dar erro
-    elif texto_manual:
-        conteudo_para_ia = texto_manual
-    
-    if conteudo_para_ia:
-        with st.spinner("🤖 A IA está calculando, formatando e criando a proposta..."):
-            try:
-                # O Prompt de Engenharia (O Segredo do Negócio)
-                prompt = f"""
-                Aja como um orçamentista profissional.
-                Eu sou: {meu_nome}, Contato: {meu_contato}.
-                Cliente: {nome_cliente}.
+if st.button("🚀 GERAR ORÇAMENTO"):
+    if not audio_gravado and not texto_manual:
+        st.warning("Grave ou escreva algo!")
+        st.stop()
+        
+    with st.spinner("Ouvindo e escrevendo..."):
+        try:
+            prompt = f"""
+            Aja como um orçamentista. Dados: {meu_nome}, {meu_contato}.
+            Cliente: {nome_cliente}.
+            Crie um orçamento técnico, com tabela de valores e total.
+            Seja formal.
+            """
+            
+            # Processamento
+            if audio_gravado:
+                # Salva áudio temporário
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                    tmp.write(audio_gravado.read())
+                    path = tmp.name
                 
-                Informações bruta do serviço: "{conteudo_para_ia}"
+                # Envia pro Google
+                arquivo = genai.upload_file(path)
+                resposta = model.generate_content([prompt, arquivo])
+                msg_final = resposta.text
+            else:
+                resposta = model.generate_content(prompt + f"\nServiço: {texto_manual}")
+                msg_final = resposta.text
+            
+            st.markdown(msg_final)
+            
+            # Baixar PDF
+            pdf_path = gerar_pdf(msg_final.replace("*", ""), nome_cliente)
+            with open(pdf_path, "rb") as f:
+                st.download_button("⬇️ Baixar PDF", f, file_name="Orcamento.pdf")
                 
-                Sua tarefa:
-                1. Identifique materiais e mão de obra.
-                2. Se eu falei de um jeito informal, reescreva de forma técnica e profissional.
-                3. Crie uma tabela de valores somados.
-                4. Escreva um texto cordial de apresentação.
-                5. O resultado deve ser um texto formatado pronto para virar documento.
-                """
-                
-                resposta = model.generate_content(prompt)
-                texto_final = resposta.text
-                
-                # Mostra na tela
-                st.markdown("### 📄 Prévia do Documento")
-                st.markdown(texto_final)
-                
-                # Gera o PDF
-                # Limpeza básica para o PDF não quebrar com Markdown
-                texto_para_pdf = texto_final.replace("*", "").replace("#", "") 
-                arquivo_pdf = gerar_pdf(texto_para_pdf, nome_cliente)
-                
-                # Botão de Download
-                with open(arquivo_pdf, "rb") as pdf_file:
-                    st.download_button(
-                        label="⬇️ Baixar PDF Pronto",
-                        data=pdf_file,
-                        file_name=f"Orcamento_{nome_cliente}.pdf",
-                        mime="application/pdf"
-                    )
-                    
-            except Exception as e:
-                st.error(f"Erro: {e}")
-    else:
-        if not audio_bytes:
-            st.warning("Descreva o serviço primeiro!")
+        except Exception as e:
+            st.error(f"Erro: {e}")
